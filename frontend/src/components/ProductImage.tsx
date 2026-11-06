@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Circle, Droplet, Gem, Link2, CircleDashed, Sparkle } from 'lucide-react'
-import type { Category, CollectionSlug } from '../data/types'
+import type { Category } from '../data/types'
+import { assetUrl } from '../lib/api'
 
 const ICONS: Record<Category, typeof Circle> = {
   Rings: Circle,
@@ -10,36 +12,32 @@ const ICONS: Record<Category, typeof Circle> = {
   Necklaces: Sparkle,
 }
 
-const TINTS: Record<CollectionSlug, string> = {
-  italia: 'from-[#efe6d8] to-[#e2d3c0]',
-  bharat: 'from-[#f3dfdd] to-[#e6c6c6]',
-  turkish: 'from-[#ece0da] to-[#ddc6ba]',
-  'middle-eastern': 'from-[#e7ddcf] to-[#d4c2a8]',
-  moroccan: 'from-[#eee2d9] to-[#ddc9b4]',
-}
-
-interface ProductImageProps {
-  category: Category
-  collection: CollectionSlug
+interface Props {
+  src?: string | null
+  alt: string
+  category?: Category
   className?: string
-  iconClassName?: string
+  dark?: boolean
+  loading?: 'lazy' | 'eager'
 }
 
-export default function ProductImage({
-  category,
-  collection,
-  className = '',
-  iconClassName = '',
-}: ProductImageProps) {
-  const Icon = ICONS[category]
+// Shows the owner's product photograph; until one is uploaded, an
+// on-brand silver placeholder (never stock imagery) is shown instead.
+export default function ProductImage({ src, alt, category = 'Rings', className = '', dark = false, loading = 'lazy' }: Props) {
+  const [failed, setFailed] = useState(false)
+  const url = assetUrl(src)
+  const Icon = ICONS[category] ?? Gem
+
   return (
-    <div
-      className={`relative flex items-center justify-center overflow-hidden bg-gradient-to-br ${TINTS[collection]} ${className}`}
-    >
-      <Icon className={`text-maroon/25 ${iconClassName}`} strokeWidth={1} />
-      <span className="absolute bottom-2 right-2 text-[9px] uppercase tracking-wider text-maroon/40 font-medium">
-        Illustrative
-      </span>
+    <div className={`product-media relative overflow-hidden ${dark ? 'bg-noir-light' : 'bg-gradient-to-br from-silver-light via-cream-dark to-blush-light'} ${className}`}>
+      {url && !failed ? (
+        <img src={url} alt={alt} loading={loading} decoding="async" onError={() => setFailed(true)} className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" role="img" aria-label={`${alt} — photograph coming soon`}>
+          <Icon className={`w-1/5 h-1/5 max-w-16 max-h-16 ${dark ? 'text-silver/40' : 'text-rose/40'}`} strokeWidth={0.8} />
+          <span className={`font-display tracking-[0.3em] text-[10px] ${dark ? 'text-silver/40' : 'text-rose/50'}`}>SULTANÉ</span>
+        </div>
+      )}
     </div>
   )
 }

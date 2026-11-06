@@ -1,48 +1,85 @@
 import { Link } from 'react-router-dom'
+import { MessageCircle, ShieldCheck } from 'lucide-react'
+import { useSettings } from '../context/SettingsContext'
+import { useCollections } from '../lib/useCollections'
+import { waLink, displayPhone } from '../lib/whatsapp'
+import Wordmark from './Wordmark'
 
 export default function Footer() {
+  const { settings } = useSettings()
+  const collections = useCollections()
+
+  const col = (title: string, links: { to: string; label: string }[]) => (
+    <div>
+      <div className="eyebrow text-rose-light mb-5">{title}</div>
+      <ul className="space-y-3 text-sm">
+        {links.map((l) => (
+          <li key={l.to + l.label}>
+            <Link to={l.to} className="text-silver-light/80 hover:text-cream transition-colors">{l.label}</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
   return (
-    <footer className="bg-maroon text-cream mt-auto">
-      <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-14 grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1fr_1fr] gap-10">
-        <div>
-          <div className="font-display text-2xl tracking-[0.18em] mb-4">SULTANÉ</div>
-          <p className="text-sm text-cream/70 max-w-xs leading-relaxed">
-            Silver jewellery. A considered expression. For the everyday, and the days you remember.
+    <footer className="bg-noir text-cream mt-auto">
+      <div className="mx-auto max-w-[1400px] px-6 sm:px-10 pt-16 pb-10 grid grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10">
+        <div className="col-span-2 md:col-span-1">
+          <Wordmark tone="rose" className="text-3xl" />
+          <p className="text-sm text-silver/80 max-w-xs leading-relaxed mt-5">
+            Luxury silver jewellery inspired by Italian, Turkish and Middle Eastern traditions. Made to order in Pakistan.
           </p>
+          <a
+            href={waLink(settings.whatsapp_number, 'Hello SULTANÉ, I have a question.')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 mt-6 text-sm text-cream border border-silver/30 px-4 py-2.5 hover:border-rose-light hover:text-rose-light transition-colors"
+          >
+            <MessageCircle size={15} strokeWidth={1.5} /> WhatsApp {displayPhone(settings.whatsapp_number)}
+          </a>
         </div>
 
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-cream/50 mb-4">Discover</div>
-          <ul className="space-y-3 text-sm">
-            <li><Link to="/shop" className="hover:text-cream/80 text-cream/90">Shop all</Link></li>
-            <li><Link to="/collections" className="hover:text-cream/80 text-cream/90">The five collections</Link></li>
-            <li><Link to="/custom-jewellery" className="hover:text-cream/80 text-cream/90">Custom jewellery</Link></li>
-          </ul>
-        </div>
+        {col('Shop', [
+          { to: '/necklaces', label: 'Necklaces' },
+          { to: '/earrings', label: 'Earrings' },
+          { to: '/bracelets', label: 'Bracelets' },
+          { to: '/rings', label: 'Rings' },
+          { to: '/mens', label: "Men's" },
+          { to: '/premium', label: 'Premium Collection' },
+          ...collections.map((c) => ({ to: `/collections/${c.slug}`, label: c.name })),
+        ])}
 
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-cream/50 mb-4">Client care</div>
-          <ul className="space-y-3 text-sm">
-            <li><Link to="/care" className="hover:text-cream/80 text-cream/90">Delivery &amp; returns</Link></li>
-            <li><Link to="/care" className="hover:text-cream/80 text-cream/90">Jewellery care</Link></li>
-            <li><Link to="/care" className="hover:text-cream/80 text-cream/90">Contact support</Link></li>
-          </ul>
-        </div>
+        {col('Client care', [
+          { to: '/contact', label: 'Contact us' },
+          { to: '/faq', label: 'FAQs' },
+          { to: '/track-order', label: 'Track your order' },
+          { to: '/care', label: 'Jewellery care' },
+          { to: '/custom-jewellery', label: 'Customised jewellery' },
+        ])}
 
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-cream/50 mb-4">Your SULTANÉ</div>
-          <ul className="space-y-3 text-sm">
-            <li><Link to="/verify" className="hover:text-cream/80 text-cream/90">Verify an article</Link></li>
-            <li><Link to="/track-order" className="hover:text-cream/80 text-cream/90">Track your order</Link></li>
-            <li><Link to="/care" className="hover:text-cream/80 text-cream/90">Privacy &amp; consent</Link></li>
-          </ul>
-        </div>
+        {col('Policies', [
+          { to: '/policies/delivery', label: 'Delivery' },
+          { to: '/policies/returns', label: 'Returns & defects' },
+          { to: '/policies/privacy', label: 'Privacy' },
+          { to: '/policies/terms', label: 'Terms of sale' },
+          { to: '/about', label: 'The SULTANÉ story' },
+        ])}
       </div>
 
-      <div className="border-t border-cream/15">
-        <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-5 flex flex-col sm:flex-row gap-2 justify-between text-xs text-cream/50">
-          <span>© 2026 SULTANÉ</span>
-          <span>Made to order in Pakistan · Payments verified manually before production</span>
+      <div className="mx-auto max-w-[1400px] px-6 sm:px-10 pb-10">
+        <Link to="/verify" className="flex items-center gap-3 border border-silver/20 px-5 py-4 hover:border-rose-light transition-colors group">
+          <ShieldCheck size={20} strokeWidth={1.3} className="text-rose-light shrink-0" />
+          <span className="text-sm text-silver-light">
+            <span className="text-cream group-hover:text-rose-light">Verify Your Piece</span> — every SULTANÉ purchase carries a unique article number.
+          </span>
+        </Link>
+      </div>
+
+      <div className="border-t border-silver/15">
+        <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-5 flex flex-col sm:flex-row gap-2 justify-between text-xs text-silver/60">
+          <span>© {new Date().getFullYear()} SULTANÉ. All rights reserved.</span>
+          <span>Prices in PKR · Bank transfer · Made to order in Pakistan</span>
         </div>
       </div>
     </footer>

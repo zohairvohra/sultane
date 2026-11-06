@@ -1,259 +1,175 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Landmark } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { useCustomer } from '../context/CustomerContext'
 import OrderSummary from '../components/OrderSummary'
 import ProductImage from '../components/ProductImage'
-import { formatPKR } from '../lib/format'
-import { CITIES } from '../lib/delivery'
-import { createOrder, ApiError } from '../lib/api'
-import type { OrderDraft } from '../data/types'
+import Field from '../components/Field'
+import { Button } from '../components/Button'
+import { formatPKR, MAJOR_CITIES, PROVINCES } from '../lib/format'
+import { placeOrder, ApiError } from '../lib/api'
+import { useQuote } from '../lib/useQuote'
 
 export default function Checkout() {
-  const { lines, subtotal, testingFees, clearCart } = useCart()
+  const { lines, count, payload, promoCode, setPromoCode, clearCart } = useCart()
+  const { customer, token } = useCustomer()
   const navigate = useNavigate()
 
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const [name, setName] = useState(customer?.name ?? '')
+  const [phone, setPhone] = useState(customer ? `0${customer.phone.slice(2)}` : '')
+  const [email, setEmail] = useState(customer?.email ?? '')
   const [street, setStreet] = useState('')
   const [area, setArea] = useState('')
-  const [city, setCity] = useState<string>(CITIES[1])
-  const [province, setProvince] = useState('Punjab')
-  const [postalCode, setPostalCode] = useState('')
+  const [city, setCity] = useState('')
+  const [province, setProvince] = useState('')
   const [notes, setNotes] = useState('')
-  const [payment, setPayment] = useState<'cod' | 'bank-transfer'>('cod')
   const [agree, setAgree] = useState(false)
-  const [totals, setTotals] = useState<{ delivery: number; discount: number; total: number; promoCode?: string }>({
-    delivery: 0,
-    discount: 0,
-    total: subtotal + testingFees,
-  })
-  const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
+  const [error, setError] = useState('')
 
-  if (lines.length === 0 && !submitted) return <Navigate to="/shop" replace />
+  const { quote, error: quoteError, loading } = useQuote(payload, { city, promoCode, phone })
 
-  const canSubmit = email && phone && firstName && lastName && street && city && province && agree
+  if (lines.length === 0 && !submitting) return <Navigate to="/cart" replace />
 
-  const handleSubmit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!canSubmit || submitting) return
-
+    if (!agree) {
+      setError('Please confirm you have read the delivery and returns policy.')
+      return
+    }
     setSubmitting(true)
-    setSubmitError('')
+    setError('')
     try {
-      const result = await createOrder({
-        customer: { firstName, lastName, email, phone, street, area: area || undefined, city, province, postalCode: postalCode || undefined, notes: notes || undefined },
-        items: lines.map((l) => ({ productId: l.product.id, size: l.size, qty: l.qty, gemstoneTesting: l.gemstoneTesting })),
-        paymentMethod: payment,
-        promoCode: totals.promoCode,
-      })
-
-      const order: OrderDraft = {
-        ref: result.ref,
-        placedAt: new Date().toISOString(),
-        customer: { firstName, lastName, email, phone, street, area, city, province, postalCode, notes },
-        lines: lines.map((l) => ({
-          name: l.product.name,
-          collection: l.product.collection,
-          category: l.product.category,
-          size: l.size,
-          qty: l.qty,
-          price: l.product.price,
-          gemstoneTesting: l.gemstoneTesting,
-        })),
-        subtotal: result.subtotal,
-        testingFees: result.testingFees,
-        delivery: result.delivery,
-        discount: result.discount,
-        total: result.total,
-        paymentMethod: payment,
-      }
-
-      setSubmitted(true)
+      const order = await placeOrder(
+        {
+          customer: { name, phone, email: email || undefined, street, area: area || undefined, city, province: province || undefined, notes: notes || undefined },
+          items: payload,
+          promoCode: promoCode || undefined,
+          acceptPolicies: true,
+        },
+        token,
+      )
       clearCart()
-      navigate('/order-confirmation', { state: { order } })
+      navigate(`/order/${order.ref}`, { state: { order, phone }, replace: true })
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.message : 'Could not place your order. Please check your connection and try again.')
-    } finally {
+      setError(err instanceof ApiError ? err.message : 'Could not place your order. Please try again.')
       setSubmitting(false)
     }
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-10">
-      <div className="text-[11px] uppercase tracking-[0.12em] text-stone mb-3">Bag → Checkout → Confirmation</div>
-      <h1 className="font-display text-5xl text-maroon mb-3">Make it yours.</h1>
-      <p className="text-stone mb-10">Guest checkout · No account required. Review the details before placing your order.</p>
+    <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-12">
+      <div className="eyebrow text-stone mb-3">Bag → Checkout → Bank transfer</div>
+      <h1 className="font-display text-5xl text-noir mb-3">Checkout</h1>
+      {!customer && (
+        <p className="text-sm text-stone mb-10">
+          Checking out as a guest. <Link to="/account?next=/checkout" className="underline underline-offset-2 text-noir">Sign in</Link> to save this order to an account (optional).
+        </p>
+      )}
+      {customer && <p className="text-sm text-stone mb-10">Signed in as {customer.name}. This order will appear in your account.</p>}
 
-      <form onSubmit={handleSubmit} className="grid lg:grid-cols-[1fr_380px] gap-12">
-        <div>
-          <section className="mb-10">
-            <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-2">01 / Contact</div>
-            <h2 className="font-display text-3xl text-maroon mb-5">Where can we reach you?</h2>
+      <form onSubmit={submit} className="grid lg:grid-cols-[1fr_420px] gap-12">
+        <div className="space-y-10">
+          <section>
+            <h2 className="font-display text-3xl mb-5">Your details</h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Email address *">
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="amina@example.com" className={inputCls} />
+              <Field label="Full name *" className="sm:col-span-2">
+                <input required minLength={2} value={name} onChange={(e) => setName(e.target.value)} className="field" autoComplete="name" />
               </Field>
-              <Field label="Mobile / WhatsApp number *">
-                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+92 300 0000000" className={inputCls} />
+              <Field label="Phone / WhatsApp number *" hint="We send order updates on WhatsApp.">
+                <input required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" className="field" autoComplete="tel" />
+              </Field>
+              <Field label="Email (optional)">
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="field" autoComplete="email" />
               </Field>
             </div>
-            <p className="text-xs text-stone mt-2">For order updates only. Marketing consent is separate and optional.</p>
           </section>
 
-          <section className="mb-10 border-t border-line pt-8">
-            <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-2">02 / Delivery address</div>
-            <h2 className="font-display text-3xl text-maroon mb-5">A place to arrive.</h2>
-            <div className="grid sm:grid-cols-2 gap-4 mb-4">
-              <Field label="First name *">
-                <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} />
+          <section className="border-t border-line pt-10">
+            <h2 className="font-display text-3xl mb-5">Delivery address</h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="House / street address *" className="sm:col-span-2">
+                <input required minLength={3} value={street} onChange={(e) => setStreet(e.target.value)} className="field" autoComplete="address-line1" />
               </Field>
-              <Field label="Last name *">
-                <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} />
+              <Field label="Area / landmark (optional)" className="sm:col-span-2">
+                <input value={area} onChange={(e) => setArea(e.target.value)} className="field" autoComplete="address-line2" />
               </Field>
-            </div>
-            <Field label="Street address *" className="mb-4">
-              <input required value={street} onChange={(e) => setStreet(e.target.value)} placeholder="House 12, Sample Lane" className={inputCls} />
-            </Field>
-            <Field label="Area / apartment / landmark (optional)" className="mb-4">
-              <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="Gulberg III" className={inputCls} />
-            </Field>
-            <div className="grid sm:grid-cols-2 gap-4 mb-4">
-              <Field label="City *">
-                <select required value={city} onChange={(e) => setCity(e.target.value)} className={inputCls}>
-                  {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              <Field label="City *" hint={city ? (city.trim().toLowerCase() === 'karachi' ? 'Free delivery within Karachi.' : 'Delivery charge shown in your order summary.') : undefined}>
+                <input required list="cities" value={city} onChange={(e) => setCity(e.target.value)} className="field" autoComplete="address-level2" />
+                <datalist id="cities">
+                  {MAJOR_CITIES.map((c) => <option key={c} value={c} />)}
+                </datalist>
+              </Field>
+              <Field label="Province">
+                <select value={province} onChange={(e) => setProvince(e.target.value)} className="field">
+                  <option value="">Select</option>
+                  {PROVINCES.map((p) => <option key={p}>{p}</option>)}
                 </select>
               </Field>
-              <Field label="Province / territory *">
-                <input required value={province} onChange={(e) => setProvince(e.target.value)} className={inputCls} />
-              </Field>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Postal code (optional)">
-                <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} className={inputCls} />
-              </Field>
-              <Field label="Delivery notes (optional)">
-                <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the courier should know?" className={inputCls} />
+              <Field label="Delivery instructions (optional)" className="sm:col-span-2">
+                <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className="field" />
               </Field>
             </div>
           </section>
 
-          <section className="border-t border-line pt-8">
-            <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-2">03 / Payment</div>
-            <h2 className="font-display text-3xl text-maroon mb-5">Choose how to pay.</h2>
-
-            <label className={`block border p-5 mb-4 cursor-pointer ${payment === 'cod' ? 'border-maroon bg-cream-dark' : 'border-line'}`}>
-              <div className="flex items-center gap-3">
-                <input type="radio" checked={payment === 'cod'} onChange={() => setPayment('cod')} className="accent-maroon" />
-                <span className="font-medium text-ink">Cash on delivery (COD)</span>
+          <section className="border-t border-line pt-10">
+            <h2 className="font-display text-3xl mb-5">Payment</h2>
+            <div className="border border-noir p-5 flex gap-4">
+              <Landmark size={22} strokeWidth={1.3} className="text-rose shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium mb-1">Bank transfer</div>
+                <p className="text-stone leading-relaxed">
+                  After you submit, we show our bank details and the exact amount to transfer. Upload your receipt on the order page
+                  (or send it on WhatsApp). Our team verifies every payment by hand — production only starts once it's verified.
+                </p>
               </div>
-              <p className="text-xs text-stone mt-2 ml-6">
-                {formatPKR(totals.total)} payable on delivery. The team will contact you to confirm the order before dispatch.
-              </p>
-            </label>
+            </div>
 
-            <label className={`block border p-5 mb-4 cursor-pointer ${payment === 'bank-transfer' ? 'border-maroon bg-cream-dark' : 'border-line'}`}>
-              <div className="flex items-center gap-3">
-                <input type="radio" checked={payment === 'bank-transfer'} onChange={() => setPayment('bank-transfer')} className="accent-maroon" />
-                <span className="font-medium text-ink">Bank transfer</span>
-              </div>
-              <p className="text-xs text-stone mt-2 ml-6">
-                Instructions are shared after the request is placed. Payment remains pending until manually confirmed
-                by the team — production starts only after verification.
-              </p>
+            <label className="flex items-start gap-3 text-sm mt-6 cursor-pointer">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-noir w-4 h-4" />
+              <span>
+                I understand every piece is made to order and that there are no change-of-mind returns. I have read the{' '}
+                <Link to="/policies/delivery" target="_blank" className="underline underline-offset-2">delivery</Link>,{' '}
+                <Link to="/policies/returns" target="_blank" className="underline underline-offset-2">returns &amp; defects</Link> and{' '}
+                <Link to="/policies/privacy" target="_blank" className="underline underline-offset-2">privacy</Link> policies. *
+              </span>
             </label>
-
-            <p className="text-xs text-stone mb-6">Online card and wallet payments are future scope, not launch payment options.</p>
-
-            <label className="flex items-start gap-2.5 text-sm mb-3 cursor-pointer">
-              <input type="checkbox" required checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 accent-maroon" />
-              I have reviewed the delivery and returns information and agree to the order terms and privacy notice. *
-            </label>
-            <label className="flex items-start gap-2.5 text-sm mb-8 cursor-pointer">
-              <input type="checkbox" className="mt-0.5 accent-maroon" />
-              Email me occasional collection stories and news. (Optional)
-            </label>
-
-            {submitError && <p className="text-sm text-maroon mb-3">{submitError}</p>}
-            <button
-              type="submit"
-              disabled={!canSubmit || submitting}
-              className="w-full bg-maroon text-cream text-xs uppercase tracking-[0.08em] font-medium px-6 py-4 hover:bg-maroon-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {submitting
-                ? 'Placing your order…'
-                : payment === 'cod'
-                ? `Place COD order · ${formatPKR(totals.total)} due on delivery`
-                : `Place bank transfer order · ${formatPKR(totals.total)}`}
-            </button>
-            <p className="text-xs text-stone mt-3">
-              Submitting places an order request, not a payment. Production begins only once your payment is
-              confirmed by our team.
-            </p>
           </section>
         </div>
 
-        <div>
-          <div className="bg-cream-dark p-6 mb-6">
+        <div className="space-y-6">
+          <div className="bg-cream-dark p-6">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-display text-2xl text-maroon">Your selection</h2>
-              <Link to="/cart" className="text-xs text-maroon underline underline-offset-2">Edit bag</Link>
+              <h2 className="font-display text-2xl">Your pieces</h2>
+              <Link to="/cart" className="text-xs underline underline-offset-2">Edit bag</Link>
             </div>
-            <div className="space-y-4">
+            <ul className="space-y-4">
               {lines.map((l) => (
-                <div key={l.lineId} className="flex gap-4">
-                  <ProductImage category={l.product.category} collection={l.product.collection} className="w-16 h-16 shrink-0" iconClassName="w-7 h-7" />
-                  <div className="flex-1">
-                    <div className="font-display text-lg text-ink leading-tight">{l.product.name}</div>
+                <li key={l.lineId} className="flex gap-4">
+                  <ProductImage src={l.product.images[0]?.url} alt={l.product.name} category={l.product.category} className="w-16 h-16 shrink-0" />
+                  <div className="flex-1 text-sm">
+                    <div className="font-display text-lg leading-tight">{l.product.name}</div>
                     <div className="text-xs text-stone">
-                      {l.product.collection} · {l.size ? `Size ${l.size} / ` : ''}silver tone · Qty {l.qty}
+                      Qty {l.qty}{l.size ? ` · Size ${l.size}` : ''}{l.gemstoneTesting ? ' · Gemstone testing' : ''}
                     </div>
-                    <div className="text-sm text-ink mt-1">{formatPKR(l.product.price * l.qty)}</div>
                   </div>
-                </div>
+                  <div className="text-sm">{formatPKR(l.product.price * l.qty)}</div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
 
-          <OrderSummary
-            title="Order total"
-            subtotal={subtotal}
-            testingFees={testingFees}
-            itemCount={lines.reduce((s, l) => s + l.qty, 0)}
-            city={city}
-            onCityChange={setCity}
-            citySelectable={false}
-            onTotalsChange={setTotals}
-            cta={<div />}
-            footnote={
-              payment === 'cod' ? (
-                <span className="block bg-blush text-maroon text-xs px-3 py-2">
-                  COD · {formatPKR(totals.total)} due on delivery
-                </span>
-              ) : (
-                <span className="block bg-blush text-maroon text-xs px-3 py-2">
-                  Bank transfer · pending manual verification
-                </span>
-              )
-            }
-          />
+          <OrderSummary quote={quote} loading={loading} itemCount={count} promoCode={promoCode} onPromoChange={setPromoCode}>
+            {(error || quoteError) && <p className="text-sm text-danger mb-4">{error || quoteError}</p>}
+            <Button type="submit" disabled={submitting || !!quoteError || !quote || (!!promoCode && !quote.promo?.applied)} className="w-full !py-4">
+              {submitting ? 'Placing order…' : `Place order${quote?.delivery != null ? ` · ${formatPKR(quote.total)}` : ''}`}
+            </Button>
+            {!!promoCode && quote?.promo && !quote.promo.applied && <p className="text-xs text-stone mt-2">Remove the code to continue.</p>}
+            <p className="text-xs text-stone mt-4">Placing your order does not take payment. You will receive bank-transfer instructions next.</p>
+          </OrderSummary>
         </div>
       </form>
-    </div>
-  )
-}
-
-const inputCls =
-  'w-full border border-line bg-cream px-4 py-3 text-sm focus:outline-none focus:border-maroon'
-
-function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <label className="block text-xs text-stone mb-1.5">{label}</label>
-      {children}
     </div>
   )
 }

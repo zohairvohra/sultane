@@ -1,22 +1,24 @@
 import type { ReactNode } from 'react'
 
 interface PageBannerProps {
-  eyebrow: string
+  eyebrow?: string
   title: string
   description?: ReactNode
-  image?: ReactNode
+  tone?: 'blush' | 'noir' | 'silver'
+  image?: string | null
 }
 
-export default function PageBanner({ eyebrow, title, description, image }: PageBannerProps) {
+export default function PageBanner({ eyebrow, title, description, tone = 'blush', image }: PageBannerProps) {
+  const bg = tone === 'noir' ? 'bg-noir text-cream' : tone === 'silver' ? 'bg-cream-dark' : 'bg-blush-light'
   return (
-    <div className="bg-blush">
-      <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-14 sm:py-20 grid md:grid-cols-2 gap-10 items-center">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-maroon/70 mb-4">{eyebrow}</div>
-          <h1 className="font-display text-5xl sm:text-6xl text-maroon leading-[1.05]">{title}</h1>
-          {description && <div className="mt-5 text-stone max-w-lg leading-relaxed">{description}</div>}
-        </div>
-        {image && <div className="aspect-[4/3] w-full">{image}</div>}
+    <div className={`relative overflow-hidden ${bg}`}>
+      {image && <img src={image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-40" />}
+      <div className="relative mx-auto max-w-[1400px] px-6 sm:px-10 py-14 sm:py-20 text-center">
+        {eyebrow && <div className={`eyebrow mb-4 ${tone === 'noir' ? 'text-rose-light' : 'text-rose-dark'}`}>{eyebrow}</div>}
+        <h1 className={`font-display text-4xl sm:text-6xl leading-[1.05] ${tone === 'noir' ? 'text-cream' : 'text-noir'}`}>{title}</h1>
+        {description && (
+          <div className={`mt-5 max-w-2xl mx-auto leading-relaxed ${tone === 'noir' ? 'text-silver-light' : 'text-stone'}`}>{description}</div>
+        )}
       </div>
     </div>
   )

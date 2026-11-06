@@ -1,257 +1,235 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Lock } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { MessageCircle } from 'lucide-react'
 import AdminLayout from '../../components/admin/AdminLayout'
+import { AdminButton, Badge, Label, Notice, Panel, inputCls, useAdminAction } from '../../components/admin/ui'
 import { useAuth } from '../../context/AuthContext'
-import { adminGetEnquiries, adminGetEnquiry, adminUpdateEnquiryStatus, ApiError, type ApiEnquiry } from '../../lib/api'
+import { admin, fetchPrivateBlobUrl, type Row } from '../../lib/api'
+import { formatDate, formatPKR, MAJOR_CITIES } from '../../lib/format'
+import { waLink, displayPhone } from '../../lib/whatsapp'
 
-type Status = ApiEnquiry['status']
-
-const STATUS_LABELS: Record<Status, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  quoted: 'Quoted',
-  accepted: 'Accepted',
-  declined: 'Declined',
+const STATUS: Record<string, { label: string; tone: 'warn' | 'rose' | 'neutral' | 'good' | 'bad' }> = {
+  new: { label: 'New', tone: 'warn' },
+  contacted: { label: 'Contacted', tone: 'rose' },
+  quoted: { label: 'Quoted', tone: 'neutral' },
+  converted: { label: 'Order created', tone: 'good' },
+  declined: { label: 'Declined', tone: 'bad' },
 }
 
-const STATUS_STYLES: Record<Status, string> = {
-  new: 'bg-blush text-maroon',
-  contacted: 'bg-cream-dark text-ink',
-  quoted: 'bg-warn-bg text-maroon',
-  accepted: 'bg-success-bg text-success',
-  declined: 'bg-cream-dark text-stone',
-}
-
-const NEXT_STATUS: Record<Status, Status | null> = {
-  new: 'contacted',
-  contacted: 'quoted',
-  quoted: 'accepted',
-  accepted: null,
-  declined: null,
-}
-
-const titleFor = (en: ApiEnquiry) => (en.type === 'customize' ? `Modify ${en.product_name ?? 'design'}` : en.jewellery_type ?? 'Custom design')
-
-export default function AdminEnquiries() {
+function List() {
   const { token } = useAuth()
-  const [enquiries, setEnquiries] = useState<ApiEnquiry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedRef, setSelectedRef] = useState<string | null>(null)
-  const [selectedDetail, setSelectedDetail] = useState<(ApiEnquiry & { files: { id: string; url: string; filename: string }[] }) | null>(null)
-  const [busy, setBusy] = useState(false)
+  const navigate = useNavigate()
+  const { run, message } = useAdminAction()
+  const [rows, setRows] = useState<Row[] | null>(null)
+  const [status, setStatus] = useState('')
+  const [type, setType] = useState('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All active statuses')
-
-  const loadEnquiries = () => {
-    if (!token) return
-    setLoading(true)
-    adminGetEnquiries(token)
-      .then((rows) => {
-        setEnquiries(rows)
-        if (!selectedRef && rows[0]) setSelectedRef(rows[0].ref)
-      })
-      .catch(() => setEnquiries([]))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(loadEnquiries, [token])
 
   useEffect(() => {
-    if (!token || !selectedRef) return
-    adminGetEnquiry(token, selectedRef).then(setSelectedDetail).catch(() => setSelectedDetail(null))
-  }, [token, selectedRef])
-
-  const filtered = useMemo(() => {
-    return enquiries.filter((en) => {
-      if (search && !(`${en.ref} ${en.name} ${en.phone}`.toLowerCase().includes(search.toLowerCase()))) return false
-      if (statusFilter !== 'All active statuses' && STATUS_LABELS[en.status] !== statusFilter) return false
-      return true
-    })
-  }, [enquiries, search, statusFilter])
-
-  const counts = {
-    New: enquiries.filter((e) => e.status === 'new').length,
-    Contacted: enquiries.filter((e) => e.status === 'contacted').length,
-    Quoted: enquiries.filter((e) => e.status === 'quoted').length,
-    Accepted: enquiries.filter((e) => e.status === 'accepted').length,
-  }
-
-  const advance = async () => {
-    if (!token || !selectedDetail) return
-    const next = NEXT_STATUS[selectedDetail.status]
-    if (!next) return
-    setBusy(true)
-    try {
-      await adminUpdateEnquiryStatus(token, selectedDetail.id, { status: next })
-      loadEnquiries()
-      const refreshed = await adminGetEnquiry(token, selectedDetail.ref)
-      setSelectedDetail(refreshed)
-    } catch (err) {
-      console.error(err instanceof ApiError ? err.message : err)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const waLink = (en: ApiEnquiry) =>
-    `https://wa.me/${en.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-      `Hello ${en.name.split(' ')[0]}, this is SULTANÉ regarding your enquiry ${en.ref} (${titleFor(en)}).`,
-    )}`
-
-  const selected = selectedDetail
+    const t = setTimeout(() => run(() => admin.enquiries(token!, { status, type, search })).then((r) => r && setRows(r)), 250)
+    return () => clearTimeout(t)
+  }, [token, status, type, search, run])
 
   return (
-    <AdminLayout title="Custom enquiries" crumb="Workspace / Custom enquiries">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-2">Private client requests</div>
-          <h2 className="font-display text-4xl text-maroon">Ideas, ready for a conversation.</h2>
-          <p className="text-stone mt-1 text-sm">Review the brief, make contact, then prepare a quote. A request is not an order.</p>
-        </div>
-        <span className="bg-cream-dark text-xs px-3 py-1.5 w-fit">Owner view · Private workspace</span>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatTile label="New" value={counts.New} note="Awaiting a first response" />
-        <StatTile label="Contacted" value={counts.Contacted} note="Details being discussed" />
-        <StatTile label="Quoted" value={counts.Quoted} note="Awaiting a decision" />
-        <StatTile label="Accepted" value={counts.Accepted} note="Next steps to confirm" />
-      </div>
-
-      <div className="grid sm:grid-cols-3 gap-4 mb-8">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Reference, name or WhatsApp number"
-          className="border border-line bg-cream px-4 py-2.5 text-sm focus:outline-none focus:border-maroon sm:col-span-2"
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-line bg-cream px-4 py-2.5 text-sm focus:outline-none focus:border-maroon">
-          {['All active statuses', ...Object.values(STATUS_LABELS)].map((s) => <option key={s}>{s}</option>)}
+    <AdminLayout title="Custom requests">
+      {message && <Notice tone={message.tone}>{message.text}</Notice>}
+      <div className="flex flex-wrap gap-3 mb-5">
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, product…" className={`${inputCls} max-w-sm`} />
+        <select value={type} onChange={(e) => setType(e.target.value)} className={`${inputCls} w-auto`}>
+          <option value="">All types</option>
+          <option value="customize">Modify existing design</option>
+          <option value="new-design">New design</option>
+        </select>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${inputCls} w-auto`}>
+          <option value="">All statuses</option>
+          {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
       </div>
-
-      <div className="grid lg:grid-cols-[360px_1fr] gap-8">
-        <div className="bg-white border border-line">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-line">
-            <h3 className="font-display text-2xl text-maroon">The enquiry desk</h3>
-            <span className="text-xs text-stone">{filtered.length} active</span>
-          </div>
-          <div className="divide-y divide-line max-h-[600px] overflow-y-auto">
-            {loading && <div className="px-5 py-10 text-center text-sm text-stone">Loading enquiries…</div>}
-            {!loading && filtered.map((en) => (
-              <button
-                key={en.ref}
-                onClick={() => setSelectedRef(en.ref)}
-                className={`w-full text-left px-5 py-4 hover:bg-cream-dark/50 transition-colors ${selectedRef === en.ref ? 'bg-blush-light' : ''}`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-[10px] px-2 py-0.5 ${STATUS_STYLES[en.status]}`}>{STATUS_LABELS[en.status]}</span>
-                  <span className="text-[10px] text-stone">{new Date(en.created_at).toLocaleDateString('en-GB')}</span>
-                </div>
-                <div className="font-display text-xl text-ink">{en.name}</div>
-                <div className="text-xs text-stone">{en.ref}</div>
-                <div className="text-xs text-stone mt-0.5">{titleFor(en)}</div>
-              </button>
-            ))}
-            {!loading && filtered.length === 0 && <div className="px-5 py-10 text-center text-sm text-stone">No enquiries match these filters.</div>}
-          </div>
-        </div>
-
-        {selected && (
-          <div className="bg-white border border-line p-6 sm:p-8">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[11px] uppercase tracking-[0.1em] text-stone">Saved request / {new Date(selected.created_at).toLocaleDateString('en-GB')}</div>
-              <span className={`text-[10px] px-2 py-0.5 ${STATUS_STYLES[selected.status]}`}>{STATUS_LABELS[selected.status]}</span>
-            </div>
-            <div className="font-display text-xl text-maroon mb-5">{selected.ref}</div>
-
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div className="bg-cream border border-line divide-y divide-line">
+        {rows === null ? (
+          <p className="p-8 text-center text-stone">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="p-8 text-center text-stone">No requests.</p>
+        ) : (
+          rows.map((e) => (
+            <button key={e.id} onClick={() => navigate(`/admin/enquiries/${e.ref}`)} className="w-full text-left p-4 hover:bg-blush-light grid sm:grid-cols-[1fr_1.5fr_auto] gap-2 sm:gap-6">
               <div>
-                <h3 className="font-display text-3xl text-ink">{selected.name}</h3>
-                <p className="text-sm text-stone">{selected.phone}{selected.email ? ` · ${selected.email}` : ''}</p>
+                <div className="font-medium text-sm">{e.name}</div>
+                <div className="text-xs text-stone">{displayPhone(e.phone)} · {formatDate(e.created_at, true)}</div>
               </div>
-              <div className="flex gap-3">
-                <a href={waLink(selected)} target="_blank" rel="noopener noreferrer" className="border border-maroon text-maroon text-xs uppercase tracking-[0.08em] px-4 py-2.5 hover:bg-maroon hover:text-cream transition-colors">
-                  WhatsApp ↗
-                </a>
-                {selected.email && (
-                  <a href={`mailto:${selected.email}`} className="border border-line text-ink text-xs uppercase tracking-[0.08em] px-4 py-2.5 hover:border-maroon transition-colors">
-                    Email ↗
-                  </a>
-                )}
+              <div className="text-sm">
+                <div>{e.type === 'customize' ? `Modify: ${e.product_name}` : `New design${e.jewellery_type ? ` · ${e.jewellery_type}` : ''}`}</div>
+                <div className="text-xs text-stone line-clamp-1">{e.description}</div>
               </div>
-            </div>
-
-            <h4 className="font-display text-2xl text-maroon mb-4">{titleFor(selected)}</h4>
-            <div className="grid sm:grid-cols-3 gap-4 mb-5 text-sm">
-              {selected.budget_range && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-stone mb-1">Budget preference</div>
-                  <div className="text-ink">PKR {selected.budget_range}</div>
-                </div>
-              )}
-              {selected.size_notes && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-stone mb-1">Size / length</div>
-                  <div className="text-ink">{selected.size_notes}</div>
-                </div>
-              )}
-              {selected.purity_preference && (
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-stone mb-1">Purity preference</div>
-                  <div className="text-ink">{selected.purity_preference}</div>
-                </div>
-              )}
-            </div>
-            {selected.instructions && <p className="text-sm text-ink leading-relaxed mb-6 italic">&ldquo;{selected.instructions}&rdquo;</p>}
-
-            {selected.files.length > 0 && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Lock size={13} className="text-stone" />
-                  <span className="text-[11px] uppercase tracking-wide text-stone">Private references / {selected.files.length} files</span>
-                  <span className="text-[10px] text-stone ml-auto">Staff-only · Never public</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {selected.files.map((f) => (
-                    <a
-                      key={f.id}
-                      href={`${import.meta.env.VITE_API_URL.replace(/\/api$/, '')}${f.url}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="aspect-square bg-cream-dark flex items-center justify-center text-[10px] text-stone px-2 text-center hover:text-maroon"
-                    >
-                      {f.filename}
-                    </a>
-                  ))}
-                </div>
+              <div className="flex items-center gap-2">
+                {e.file_count > 0 && <span className="text-xs text-stone">{e.file_count} img</span>}
+                <Badge tone={STATUS[e.status].tone}>{STATUS[e.status].label}</Badge>
               </div>
-            )}
-
-            {NEXT_STATUS[selected.status] ? (
-              <button
-                onClick={advance}
-                disabled={busy}
-                className="bg-maroon text-cream text-xs uppercase tracking-[0.08em] font-medium px-5 py-3 hover:bg-maroon-dark transition-colors disabled:opacity-50"
-              >
-                {busy ? 'Working…' : `Move to "${STATUS_LABELS[NEXT_STATUS[selected.status]!]}" ↗`}
-              </button>
-            ) : (
-              <div className="bg-success-bg text-success text-sm px-4 py-3">This enquiry has been accepted — next step: convert to an order.</div>
-            )}
-          </div>
+            </button>
+          ))
         )}
       </div>
     </AdminLayout>
   )
 }
 
-function StatTile({ label, value, note }: { label: string; value: number; note: string }) {
-  return (
-    <div className="bg-white border border-line p-5">
-      <div className="text-xs text-stone mb-2">{label}</div>
-      <div className="font-display text-3xl text-maroon mb-1">{value}</div>
-      <div className="text-[11px] text-stone">{note}</div>
-    </div>
+function PrivateImage({ fileId, name }: { fileId: string; name: string }) {
+  const { token } = useAuth()
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let u: string | null = null
+    fetchPrivateBlobUrl(`/enquiries/files/${fileId}`, token!).then((x) => {
+      u = x
+      setUrl(x)
+    }).catch(() => undefined)
+    return () => {
+      if (u) URL.revokeObjectURL(u)
+    }
+  }, [fileId, token])
+  return url ? (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="block border border-line bg-white">
+      <img src={url} alt={name} className="w-full aspect-square object-cover" />
+    </a>
+  ) : (
+    <div className="aspect-square bg-cream-dark animate-pulse" />
   )
+}
+
+function Detail({ ref_ }: { ref_: string }) {
+  const { token, admin: me } = useAuth()
+  const navigate = useNavigate()
+  const { run, busy, message, setMessage } = useAdminAction()
+  const [e, setE] = useState<Row | null>(null)
+  const [quote, setQuote] = useState('')
+  const [notes, setNotes] = useState('')
+  const [convert, setConvert] = useState({ title: '', details: '', street: '', area: '', city: '', province: '' })
+  const readOnly = me?.role === 'viewer'
+
+  const load = useCallback(() => {
+    run(() => admin.enquiry(token!, ref_)).then((r) => {
+      if (!r) return
+      setE(r)
+      setQuote(r.quoted_price_pkr?.toString() ?? '')
+      setNotes(r.admin_notes ?? '')
+      setConvert((c) => ({ ...c, title: c.title || (r.type === 'customize' ? `${r.product_name} — customised` : `Custom ${r.jewellery_type?.toLowerCase().replace(/s$/, '') ?? 'piece'}`), details: c.details || r.description }))
+    })
+  }, [token, ref_, run])
+  useEffect(load, [load])
+
+  if (!e) return <AdminLayout title="Request">{message ? <Notice tone="bad">{message.text}</Notice> : <p className="text-stone">Loading…</p>}</AdminLayout>
+
+  const setStatus = async (status: string) => {
+    if (await run(() => admin.updateEnquiry(token!, e.id, { status }), 'Status updated')) load()
+  }
+  const first = e.name.split(' ')[0]
+  const quoteMsg = quote
+    ? `Hello ${first}, thank you for your SULTANÉ request ${e.ref}. We can make this for ${formatPKR(Number(quote))}. Would you like to go ahead? If so, please share your delivery address.`
+    : `Hello ${first}, thank you for your SULTANÉ request ${e.ref}. `
+
+  return (
+    <AdminLayout title={`Request ${e.ref}`} actions={<Link to="/admin/enquiries" className="text-xs text-stone underline">← All requests</Link>}>
+      {message && <Notice tone={message.tone} onClose={() => setMessage(null)}>{message.text}</Notice>}
+      <div className="flex flex-wrap gap-2 items-center mb-6">
+        <Badge tone={STATUS[e.status].tone}>{STATUS[e.status].label}</Badge>
+        <Badge>{e.type === 'customize' ? 'Modify existing design' : 'New design'}</Badge>
+        <span className="text-xs text-stone">{formatDate(e.created_at, true)}</span>
+      </div>
+
+      <div className="grid xl:grid-cols-[1.4fr_1fr] gap-6">
+        <div className="space-y-6">
+          <Panel title="Request">
+            {e.type === 'customize' && (
+              <p className="text-sm mb-3">
+                Design: <strong>{e.product_name}</strong> <span className="text-stone">({e.product_sku})</span>
+              </p>
+            )}
+            {e.jewellery_type && <p className="text-sm mb-3">Type: {e.jewellery_type}</p>}
+            <p className="text-sm whitespace-pre-line">{e.description}</p>
+            {e.preferences && <p className="text-sm text-stone mt-3 whitespace-pre-line">Preferences: {e.preferences}</p>}
+            {e.files.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mt-5">
+                {e.files.map((f: Row) => <PrivateImage key={f.id} fileId={f.id} name={f.filename} />)}
+              </div>
+            )}
+          </Panel>
+
+          {e.status !== 'converted' && !readOnly && (
+            <Panel title="Create order from approved quotation">
+              <p className="text-xs text-stone mb-4">
+                Once the customer has accepted the price on WhatsApp, create their order here. It starts as <em>Pending Price</em>; confirm the amount on the
+                order and move it to <em>Awaiting Payment</em> to show them the bank details.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="sm:col-span-2"><Label>Piece name on order</Label><input value={convert.title} onChange={(x) => setConvert({ ...convert, title: x.target.value })} className={inputCls} /></label>
+                <label className="sm:col-span-2"><Label>Specification</Label><textarea rows={3} value={convert.details} onChange={(x) => setConvert({ ...convert, details: x.target.value })} className={inputCls} /></label>
+                <label className="sm:col-span-2"><Label>Street address</Label><input value={convert.street} onChange={(x) => setConvert({ ...convert, street: x.target.value })} className={inputCls} /></label>
+                <label><Label>Area</Label><input value={convert.area} onChange={(x) => setConvert({ ...convert, area: x.target.value })} className={inputCls} /></label>
+                <label>
+                  <Label>City</Label>
+                  <input list="admin-cities" value={convert.city} onChange={(x) => setConvert({ ...convert, city: x.target.value })} className={inputCls} />
+                  <datalist id="admin-cities">{MAJOR_CITIES.map((c) => <option key={c} value={c} />)}</datalist>
+                </label>
+              </div>
+              <AdminButton
+                className="mt-4"
+                disabled={busy || !quote || !convert.street || !convert.city || !convert.title}
+                onClick={async () => {
+                  const r = await run(() => admin.convertEnquiry(token!, e.id, { ...convert, pricePkr: Number(quote) }))
+                  if (r) navigate(`/admin/orders/${r.ref}`)
+                }}
+              >
+                Create order at {quote ? formatPKR(Number(quote)) : '— set a quote first'}
+              </AdminButton>
+            </Panel>
+          )}
+          {e.order_ref && <Notice tone="good">Order created: <Link to={`/admin/orders/${e.order_ref}`} className="underline">{e.order_ref}</Link></Notice>}
+        </div>
+
+        <div className="space-y-6">
+          <Panel title="Customer">
+            <div className="text-sm font-medium">{e.name}</div>
+            <a href={waLink(e.phone, quoteMsg)} target="_blank" rel="noopener noreferrer" className="mt-2 flex items-center gap-2 text-success text-sm">
+              <MessageCircle size={15} /> {displayPhone(e.phone)} — open WhatsApp
+            </a>
+          </Panel>
+
+          <Panel title="Quotation & status">
+            <label className="block mb-3">
+              <Label hint="Agreed with the jewellery maker">Quoted price (PKR)</Label>
+              <input type="number" min={0} value={quote} onChange={(x) => setQuote(x.target.value)} className={inputCls} disabled={readOnly || e.status === 'converted'} />
+            </label>
+            <label className="block mb-3">
+              <Label>Internal notes</Label>
+              <textarea rows={4} value={notes} onChange={(x) => setNotes(x.target.value)} className={inputCls} disabled={readOnly} />
+            </label>
+            {!readOnly && (
+              <AdminButton
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  if (await run(() => admin.updateEnquiry(token!, e.id, { quotedPricePkr: quote ? Number(quote) : null, adminNotes: notes, ...(quote && e.status !== 'converted' ? { status: 'quoted' } : {}) }), 'Saved')) load()
+                }}
+              >
+                Save
+              </AdminButton>
+            )}
+            {!readOnly && e.status !== 'converted' && (
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-line">
+                {['contacted', 'quoted', 'declined', 'new'].filter((s) => s !== e.status).map((s) => (
+                  <AdminButton key={s} variant={s === 'declined' ? 'danger' : 'ghost'} disabled={busy} onClick={() => setStatus(s)}>
+                    Mark {STATUS[s].label.toLowerCase()}
+                  </AdminButton>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+      </div>
+    </AdminLayout>
+  )
+}
+
+export default function AdminEnquiries() {
+  const { ref } = useParams()
+  return ref ? <Detail key={ref} ref_={ref} /> : <List />
 }

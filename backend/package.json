@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "npm --prefix ../database run migrate",
-    "seed": "npm --prefix ../database run seed"
+    "seed": "npm --prefix ../database run seed",
+    "reset-db": "npm --prefix ../database run reset",
+    "test:acceptance": "node test/acceptance.mjs"
   },
   "keywords": [],
   "author": "",
