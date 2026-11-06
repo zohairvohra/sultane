@@ -1,0 +1,22 @@
+{
+  "name": "sultane-database",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SULTANÉ PostgreSQL schema, migrations, and seed data",
+  "scripts": {
+    "migrate": "tsx migrate.ts",
+    "seed": "tsx seed.ts"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.9",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# env files (never commit secrets)
+.env
+.env.local
+
+# uploaded files (local dev storage)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# design reference (not part of the shipped app)
+Untitled.png
+crops/
+
+# test artifacts
+frontend/shot-home.mjs
+
+# Claude Code internal state
+.claude/
