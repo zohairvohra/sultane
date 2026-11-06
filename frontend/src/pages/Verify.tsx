@@ -1,117 +1,119 @@
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ScanLine, QrCode } from 'lucide-react'
-import ProductImage from '../components/ProductImage'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ShieldCheck, ShieldX, ScanLine } from 'lucide-react'
+import { Button } from '../components/Button'
+import Wordmark from '../components/Wordmark'
+import { verifyArticle, ApiError, type VerificationResult } from '../lib/api'
+import { formatDate } from '../lib/format'
 
+// /verify        → enter an article number
+// /verify/:code  → result (this is where the QR code on the authenticity card points)
 export default function Verify() {
-  const [code, setCode] = useState('')
+  const { code: routeCode } = useParams()
   const navigate = useNavigate()
+  const [input, setInput] = useState(routeCode ?? '')
+  const [state, setState] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
+  const [result, setResult] = useState<VerificationResult | null>(null)
+  const [error, setError] = useState('')
 
-  const handleSubmit = (e: FormEvent) => {
+  useEffect(() => {
+    if (!routeCode) {
+      setState('idle')
+      return
+    }
+    setInput(routeCode)
+    setState('loading')
+    verifyArticle(routeCode)
+      .then((r) => {
+        setResult(r)
+        setState(r ? 'found' : 'not-found')
+      })
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : 'Verification is unavailable right now.')
+        setState('error')
+      })
+  }, [routeCode])
+
+  const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (!code.trim()) return
-    navigate(`/verify/result?code=${encodeURIComponent(code.trim())}`)
+    const clean = input.trim().toUpperCase()
+    if (clean) navigate(`/verify/${encodeURIComponent(clean)}`)
   }
 
   return (
-    <div>
-      <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-14 sm:py-20 grid lg:grid-cols-2 gap-14">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-stone mb-4">The SULTANÉ article registry</div>
-          <h1 className="font-display text-5xl sm:text-6xl text-maroon leading-[1.05] mb-6">
-            A little clarity,
-            <br />
-            in a code.
-          </h1>
-          <p className="text-stone max-w-md leading-relaxed mb-8">
-            A lookup confirms that a code exists in SULTANÉ&rsquo;s registry. It does not independently prove an item
-            is genuine.
-          </p>
-          <ProductImage category="Rings" collection="italia" className="aspect-[4/3] w-full mb-3" iconClassName="w-16 h-16" />
-          <p className="text-xs text-stone">
-            Illustrative packaging and article imagery. A registry record relates to one physical piece, not a whole
-            product style.
-          </p>
-        </div>
+    <div className="bg-noir min-h-[75vh] text-cream">
+      <div className="mx-auto max-w-2xl px-6 py-16 sm:py-24 text-center">
+        <ShieldCheck size={36} strokeWidth={1} className="text-rose-light mx-auto mb-5" />
+        <div className="eyebrow text-rose-light mb-3">Article-number registry</div>
+        <h1 className="font-display text-4xl sm:text-6xl mb-5">Verify Your Piece</h1>
+        <p className="text-silver-light leading-relaxed mb-10">
+          Every SULTANÉ piece receives its own article number once its purchase is confirmed. Enter the number from your authenticity card,
+          or scan its QR code.
+        </p>
 
-        <div>
-          <div className="bg-cream border border-line p-8">
-            <div className="flex items-center gap-2 mb-6">
-              <ScanLine size={18} strokeWidth={1.5} className="text-maroon" />
-              <h2 className="font-display text-2xl text-maroon">Look up an article code.</h2>
+        <form onSubmit={submit} className="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto">
+          <label htmlFor="code" className="sr-only">Article number</label>
+          <input
+            id="code"
+            value={input}
+            onChange={(e) => setInput(e.target.value.toUpperCase())}
+            placeholder="SLT-XXXX-XXXX-XXXX"
+            autoComplete="off"
+            spellCheck={false}
+            className="flex-1 bg-transparent border border-silver/40 px-4 py-3.5 font-mono tracking-[0.12em] text-center sm:text-left focus:outline-none focus:border-rose-light"
+          />
+          <Button type="submit" variant="rose" disabled={state === 'loading'}>
+            {state === 'loading' ? 'Checking…' : 'Verify'}
+          </Button>
+        </form>
+        <p className="text-xs text-silver/60 mt-4 flex items-center justify-center gap-2">
+          <ScanLine size={14} /> Scanning the QR code on your card opens this page automatically.
+        </p>
+
+        {state === 'found' && result && (
+          <div className="mt-12 bg-cream text-noir p-8 sm:p-10 text-left relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-1 bg-rosegold" />
+            <div className="flex items-center justify-between mb-6">
+              <Wordmark className="text-xl" />
+              <span className="inline-flex items-center gap-1.5 text-success text-xs uppercase tracking-[0.14em]">
+                <ShieldCheck size={15} /> Registered
+              </span>
             </div>
-
-            <form onSubmit={handleSubmit}>
-              <label className="block text-xs text-stone mb-2">Article code</label>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="SLT-7K4M-Q9XD-2HRB"
-                className="w-full border border-line bg-cream px-4 py-3 text-sm mb-2 focus:outline-none focus:border-maroon font-mono tracking-wide"
-              />
-              <p className="text-xs text-stone mb-6">
-                Use the code printed on the article card or label. Format: SLT-7K4M-Q9XD-2HRB. Include all three
-                groups after SLT.
-              </p>
-              <button
-                type="submit"
-                className="w-full bg-maroon text-cream text-xs uppercase tracking-[0.08em] font-medium px-6 py-4 hover:bg-maroon-dark transition-colors"
-              >
-                Look up code ↗
-              </button>
-            </form>
-
-            <div className="border-t border-line mt-6 pt-6 flex gap-4">
-              <div className="w-14 h-14 bg-cream-dark flex items-center justify-center shrink-0">
-                <QrCode size={26} strokeWidth={1.25} className="text-maroon" />
+            <dl className="space-y-4">
+              <div>
+                <dt className="eyebrow text-stone mb-1">Jewellery piece</dt>
+                <dd className="font-display text-3xl">{result.productName}</dd>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <dt className="eyebrow text-stone mb-1">Owner</dt>
+                  <dd>{result.customerName}</dd>
+                </div>
+                <div>
+                  <dt className="eyebrow text-stone mb-1">Purchase date</dt>
+                  <dd>{formatDate(result.purchaseDate)}</dd>
+                </div>
               </div>
               <div>
-                <div className="text-sm font-medium text-ink mb-1">Prefer to scan?</div>
-                <p className="text-xs text-stone leading-relaxed">
-                  Use your phone&rsquo;s camera on the article QR. Check that the link opens SULTANÉ&rsquo;s registry,
-                  then review the code.
-                </p>
+                <dt className="eyebrow text-stone mb-1">Article number</dt>
+                <dd className="font-mono tracking-wider">{result.code}</dd>
               </div>
-            </div>
+            </dl>
+          </div>
+        )}
 
-            <div className="bg-cream-dark p-5 mt-6">
-              <div className="text-sm font-medium text-ink mb-1">Code not found or entered incorrectly?</div>
-              <p className="text-xs text-stone leading-relaxed">
-                Check for missing characters, spaces or typing errors and try again. If there is still no match,
-                contact support with the code and article details. A missing record does not by itself establish
-                authenticity.
-              </p>
-            </div>
-
-            <p className="text-xs text-stone mt-6">
-              No buyer information is requested or displayed. Do not share personal identification or payment
-              information.
+        {state === 'not-found' && (
+          <div className="mt-12 border border-silver/30 p-8">
+            <ShieldX size={28} strokeWidth={1.2} className="text-rose-light mx-auto mb-3" />
+            <div className="font-display text-2xl mb-2">Not found in our registry</div>
+            <p className="text-sm text-silver-light">
+              Please check the number on your card and try again. If you believe this is a mistake,{' '}
+              <Link to="/contact" className="underline">contact us</Link>.
             </p>
           </div>
+        )}
 
-          <p className="text-xs text-stone mt-4">
-            Try a sample code: <button type="button" onClick={() => setCode('SLT-7K4M-Q9XD-2HRB')} className="underline text-maroon">SLT-7K4M-Q9XD-2HRB</button>
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-cream-dark">
-        <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-14 grid sm:grid-cols-2 gap-10">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">What you may see</div>
-            <p className="text-sm text-stone leading-relaxed">
-              A matching record shows the product, collection, recorded article details and verification history. It
-              does not reveal the purchaser.
-            </p>
-          </div>
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">What a match cannot do</div>
-            <p className="text-sm text-stone leading-relaxed">
-              Copied codes are possible. If the article or its details do not align with the record, pause and
-              contact support for a closer review.
-            </p>
-          </div>
-        </div>
+        {state === 'error' && <p className="mt-10 text-sm text-rose-light">{error}</p>}
       </div>
     </div>
   )

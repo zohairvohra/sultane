@@ -2,16 +2,17 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { ApiError } from '../../lib/api'
+import Wordmark from '../../components/Wordmark'
 
 export default function AdminLogin() {
   const { token, login } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('owner@sultane.pk')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  if (token) return <Navigate to="/admin/orders" replace />
+  if (token) return <Navigate to="/admin/overview" replace />
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -19,47 +20,30 @@ export default function AdminLogin() {
     setLoading(true)
     try {
       await login(email, password)
-      navigate('/admin/orders')
+      navigate('/admin/overview')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not sign in. Is the API running?')
+      setError(err instanceof ApiError ? err.message : 'Could not sign in.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-maroon flex items-center justify-center px-6">
+    <div className="min-h-screen bg-noir flex items-center justify-center px-6">
       <div className="bg-cream w-full max-w-sm p-8">
-        <div className="font-display text-2xl tracking-[0.18em] text-maroon mb-1 text-center">SULTANÉ</div>
-        <div className="text-[11px] uppercase tracking-[0.14em] text-stone text-center mb-8">The owner&rsquo;s desk</div>
-
+        <div className="text-center mb-1"><Wordmark className="text-3xl" /></div>
+        <div className="eyebrow text-stone text-center mb-8">Owner dashboard</div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs text-stone mb-1.5">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-line bg-cream px-4 py-3 text-sm focus:outline-none focus:border-maroon"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-stone mb-1.5">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-line bg-cream px-4 py-3 text-sm focus:outline-none focus:border-maroon"
-            />
-          </div>
-          {error && <p className="text-xs text-maroon">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-maroon text-cream text-xs uppercase tracking-[0.08em] font-medium px-6 py-3.5 hover:bg-maroon-dark transition-colors disabled:opacity-50"
-          >
+          <label className="block">
+            <span className="block text-xs text-stone mb-1.5">Email</span>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="field" autoComplete="username" />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-stone mb-1.5">Password</span>
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="field" autoComplete="current-password" />
+          </label>
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <button type="submit" disabled={loading} className="w-full bg-noir text-cream text-[11px] uppercase tracking-[0.16em] px-6 py-3.5 hover:bg-rose-dark transition-colors disabled:opacity-50">
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>

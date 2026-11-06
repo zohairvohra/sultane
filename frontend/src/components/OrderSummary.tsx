@@ -1,143 +1,109 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { formatPKR } from '../lib/format'
-import { CITIES, deliveryFeeFor } from '../lib/delivery'
-import { validatePromo } from '../lib/api'
+import type { Quote } from '../lib/api'
+import { useSettings } from '../context/SettingsContext'
 
-interface OrderSummaryProps {
-  title: string
-  subtotal: number
-  testingFees: number
+interface Props {
+  quote: Quote | null
+  loading?: boolean
   itemCount: number
-  city: string
-  onCityChange: (city: string) => void
-  footnote: ReactNode
-  cta: ReactNode
-  citySelectable?: boolean
-  onTotalsChange?: (totals: { delivery: number; discount: number; total: number; promoCode?: string }) => void
+  promoCode: string
+  onPromoChange: (code: string) => void
+  children?: ReactNode
 }
 
-export default function OrderSummary({
-  title,
-  subtotal,
-  testingFees,
-  itemCount,
-  city,
-  onCityChange,
-  footnote,
-  cta,
-  citySelectable = true,
-  onTotalsChange,
-}: OrderSummaryProps) {
-  const [promoInput, setPromoInput] = useState('')
-  const [promo, setPromo] = useState<{ valid: boolean; amount: number; description?: string } | null>(null)
-  const [checkingPromo, setCheckingPromo] = useState(false)
+export default function OrderSummary({ quote, loading, itemCount, promoCode, onPromoChange, children }: Props) {
+  const { settings } = useSettings()
+  const [input, setInput] = useState(promoCode)
 
-  const delivery = deliveryFeeFor(city)
-  const discount = promo?.valid ? promo.amount : 0
-  const total = Math.max(0, subtotal + testingFees + delivery - discount)
-
-  useEffect(() => {
-    onTotalsChange?.({ delivery, discount, total, promoCode: promo?.valid ? promoInput.trim().toUpperCase() : undefined })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delivery, discount, total, promo])
-
-  const applyPromo = async () => {
-    if (!promoInput.trim()) return
-    setCheckingPromo(true)
-    try {
-      const result = await validatePromo(promoInput)
-      if (!result.valid) {
-        setPromo({ valid: false, amount: 0 })
-        return
-      }
-      const amount =
-        result.discountType === 'percent' ? Math.round((subtotal * (result.discountValue ?? 0)) / 100) : result.discountValue ?? 0
-      setPromo({ valid: true, amount, description: result.description })
-    } catch {
-      setPromo({ valid: false, amount: 0 })
-    } finally {
-      setCheckingPromo(false)
-    }
-  }
+  const deliveryLabel =
+    quote?.delivery == null
+      ? settings.delivery_fee_karachi_pkr === 0
+        ? `Free in Karachi · ${formatPKR(settings.delivery_fee_other_pkr)} elsewhere`
+        : 'Calculated at checkout'
+      : quote.delivery === 0
+        ? 'Free'
+        : formatPKR(quote.delivery)
 
   return (
-    <div className="bg-cream-dark p-6 sm:p-8 h-fit">
-      <h2 className="font-display text-3xl text-maroon mb-6">{title}</h2>
+    <div className={`bg-cream-dark p-6 sm:p-8 h-fit transition-opacity ${loading ? 'opacity-70' : ''}`}>
+      <h2 className="font-display text-3xl text-noir mb-6">Order summary</h2>
 
-      {citySelectable ? (
-        <>
-          <label className="block text-xs text-stone mb-2">Estimate delivery</label>
-          <select
-            value={city}
-            onChange={(e) => onCityChange(e.target.value)}
-            className="w-full border border-line bg-cream px-4 py-3 text-sm mb-3 focus:outline-none focus:border-maroon"
+      {/* Not a <form>: this summary is rendered inside the checkout form. */}
+      <div className="flex gap-2">
+
+        <label className="sr-only" htmlFor="promo">Enter a code</label>
+        <input
+          id="promo"
+          value={input}
+          onChange={(e) => setInput(e.target.value.toUpperCase())}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              onPromoChange(input.trim().toUpperCase())
+            }
+          }}
+          placeholder="Enter a code"
+          className="field flex-1 uppercase"
+          autoComplete="off"
+        />
+        {promoCode ? (
+          <button
+            type="button"
+            onClick={() => {
+              setInput('')
+              onPromoChange('')
+            }}
+            className="border border-line text-[11px] uppercase tracking-[0.14em] px-4"
           >
-            {CITIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-          <p className="text-xs text-stone mb-6">
-            Sample Pakistan delivery estimate. Final charge is confirmed before your order is placed.
-          </p>
-        </>
-      ) : (
-        <div className="flex justify-between text-xs text-stone mb-6 pb-3 border-b border-line">
-          <span>Delivering to</span>
-          <span className="text-ink">{city || 'Add your address below'}</span>
-        </div>
+            Remove
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onPromoChange(input.trim().toUpperCase())}
+            className="border border-noir text-noir text-[11px] uppercase tracking-[0.14em] px-4 hover:bg-noir hover:text-cream transition-colors"
+          >
+            Apply
+          </button>
+        )}
+      </div>
+      {quote?.promo && (
+        <p className={`text-xs mt-2 ${quote.promo.applied ? 'text-success' : 'text-danger'}`}>
+          {quote.promo.applied ? `${quote.promo.code} applied — ${quote.promo.message}` : quote.promo.message}
+        </p>
       )}
 
-      <div className="flex gap-2 mb-6">
-        <input
-          value={promoInput}
-          onChange={(e) => setPromoInput(e.target.value)}
-          placeholder="Enter a code"
-          className="flex-1 border border-line bg-cream px-3 py-2.5 text-sm focus:outline-none focus:border-maroon"
-        />
-        <button
-          onClick={applyPromo}
-          type="button"
-          disabled={checkingPromo}
-          className="border border-maroon text-maroon text-xs uppercase tracking-wide px-4 hover:bg-maroon hover:text-cream transition-colors disabled:opacity-50"
-        >
-          {checkingPromo ? '…' : 'Apply'}
-        </button>
-      </div>
-      {promo && !promo.valid && <p className="text-xs text-maroon -mt-4 mb-6">Code not recognised.</p>}
-      {promo?.valid && <p className="text-xs text-success -mt-4 mb-6">{promo.description} applied.</p>}
-
-      <div className="space-y-3 text-sm border-t border-line pt-5">
+      <dl className="space-y-3 text-sm border-t border-line pt-5 mt-6">
         <div className="flex justify-between">
-          <span className="text-stone">Subtotal · {itemCount} {itemCount === 1 ? 'piece' : 'pieces'}</span>
-          <span>{formatPKR(subtotal)}</span>
+          <dt className="text-stone">Subtotal · {itemCount} {itemCount === 1 ? 'piece' : 'pieces'}</dt>
+          <dd>{quote ? formatPKR(quote.subtotal) : '—'}</dd>
         </div>
-        {testingFees > 0 && (
+        {!!quote?.testingFees && (
           <div className="flex justify-between">
-            <span className="text-stone">Gemstone testing</span>
-            <span>{formatPKR(testingFees)}</span>
+            <dt className="text-stone">Gemstone testing</dt>
+            <dd>{formatPKR(quote.testingFees)}</dd>
           </div>
         )}
-        <div className="flex justify-between">
-          <span className="text-stone">Delivery · {city.split(',')[0]} estimate</span>
-          <span>{delivery === 0 ? 'Free' : formatPKR(delivery)}</span>
+        <div className="flex justify-between gap-4">
+          <dt className="text-stone">Delivery</dt>
+          <dd className="text-right">{deliveryLabel}</dd>
         </div>
-        <div className="flex justify-between">
-          <span className="text-stone">Discount</span>
-          <span>{discount > 0 ? `– ${formatPKR(discount)}` : formatPKR(0)}</span>
-        </div>
-      </div>
+        {!!quote?.discount && (
+          <div className="flex justify-between text-success">
+            <dt>Discount</dt>
+            <dd>– {formatPKR(quote.discount)}</dd>
+          </div>
+        )}
+      </dl>
 
-      <div className="flex justify-between items-baseline border-t border-line mt-5 pt-5 mb-2">
-        <span className="font-display text-2xl text-ink">Total</span>
-        <span className="font-display text-2xl text-maroon">{formatPKR(Math.max(0, total))}</span>
+      <div className="flex justify-between items-baseline border-t border-line mt-5 pt-5 mb-6">
+        <span className="font-display text-2xl">Total</span>
+        <span className="font-display text-2xl">{quote ? formatPKR(quote.total) : '—'}</span>
       </div>
-      <p className="text-xs text-stone mb-6">
-        No additional tax line in this concept; tax treatment and delivery charges require confirmation before
-        launch.
-      </p>
+      {quote?.delivery == null && <p className="text-xs text-stone -mt-4 mb-6">Delivery is added at checkout once you enter your city.</p>}
 
-      {cta}
-      {footnote}
+      {children}
     </div>
   )
 }

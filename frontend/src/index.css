@@ -1,23 +1,40 @@
 @import "tailwindcss";
 
+/*
+  SULTANÉ palette — baby pink, silver, rose gold and black, used in a
+  coordinated way: black for type and primary actions, rose gold as the
+  accent, baby pink for soft section washes, silver for lines and surfaces.
+*/
 @theme {
   --font-serif: "Cormorant Garamond", "Georgia", serif;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Jost", "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-maroon: #571c2b;
-  --color-maroon-dark: #3d1320;
-  --color-maroon-light: #7a2c40;
-  --color-blush: #f0dcd6;
-  --color-blush-light: #f6e8e4;
-  --color-cream: #faf6f0;
-  --color-cream-dark: #f3ece2;
-  --color-sand: #ded2bf;
-  --color-ink: #2a1c20;
-  --color-stone: #6b625f;
-  --color-line: #e5ddd3;
-  --color-success: #4b6b4f;
-  --color-success-bg: #e7ede6;
-  --color-warn-bg: #f3e4d8;
+  --color-noir: #141213;
+  --color-noir-dark: #000000;
+  --color-noir-light: #2b2728;
+
+  --color-rose: #b76e79;
+  --color-rose-dark: #94535d;
+  --color-rose-light: #e8c4bb;
+
+  --color-blush: #f8dfe5;
+  --color-blush-light: #fdf2f5;
+
+  --color-silver: #c4c3c8;
+  --color-silver-light: #ececef;
+
+  --color-cream: #fffcfd;
+  --color-cream-dark: #f5f3f4;
+  --color-ink: #1b1819;
+  --color-stone: #6c6567;
+  --color-line: #e7e2e4;
+
+  --color-success: #3f6b4f;
+  --color-success-bg: #e6efe8;
+  --color-warn: #8a5a1c;
+  --color-warn-bg: #fbefe1;
+  --color-danger: #a33a3a;
+  --color-danger-bg: #f9e6e6;
 }
 
 html {
@@ -37,9 +54,41 @@ body {
   font-family: var(--font-serif);
 }
 
+/* Rose-gold metallic text for the wordmark and accents */
+.text-rosegold {
+  background: linear-gradient(110deg, #9c5a63 0%, #d8a59a 35%, #f3d6cc 50%, #c78a86 65%, #9c5a63 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-rosegold {
+  background: linear-gradient(110deg, #a8636d 0%, #d4a194 45%, #e9c3b6 55%, #b77880 100%);
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0;
+  transition: border-color 0.15s;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-noir);
+}
+
 ::selection {
   background: var(--color-blush);
-  color: var(--color-maroon-dark);
+  color: var(--color-noir);
 }
 
 input,
@@ -51,5 +100,31 @@ button {
 
 input::placeholder,
 textarea::placeholder {
-  color: #a39890;
+  color: #a69ea1;
+}
+
+/* Subtle hover lift for product cards */
+.product-media img {
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.4s;
+}
+.group:hover .product-media img {
+  transform: scale(1.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .product-media img {
+    transition: none;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
 }

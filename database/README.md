@@ -8,7 +8,8 @@ Owns the PostgreSQL schema for SULTANÉ: table definitions, one-time migration, 
 npm install
 cp .env.example .env     # DATABASE_URL must point at an existing database
 npm run migrate          # applies schema.sql — safe to re-run, every statement is idempotent
-npm run seed              # collections, 24 sample products, default settings, one owner admin account
+npm run seed              # 3 collections, 22 sample products, settings, policies, FAQs, one owner account
+npm run reset             # DROP everything and re-apply schema.sql (development / first v2 deploy only)
 ```
 
 `npm run seed` prints the admin login it created. Set `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` in `.env` before seeding anything beyond local development.
@@ -16,9 +17,11 @@ npm run seed              # collections, 24 sample products, default settings, o
 ## Files
 
 ```
-schema.sql    All tables: admin_users, collections, products, product_images,
+schema.sql    All tables: admin_users, customers, collections, products,
+              product_collections, product_images,
               orders, order_items, article_codes, enquiries, enquiry_files,
-              promo_codes, loyalty_rewards, settings.
+              promo_codes, promo_redemptions, loyalty_rewards, settings.
+reset.ts      Drops the public schema and re-applies schema.sql.
 migrate.ts    Reads schema.sql and executes it against DATABASE_URL.
 seed.ts       Idempotent sample data (ON CONFLICT DO UPDATE/NOTHING throughout).
 pool.ts       Minimal pg.Pool used only by migrate.ts/seed.ts — the running API

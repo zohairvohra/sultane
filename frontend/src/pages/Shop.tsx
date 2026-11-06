@@ -1,250 +1,256 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { SlidersHorizontal, X } from 'lucide-react'
 import PageBanner from '../components/PageBanner'
-import ProductImage from '../components/ProductImage'
 import ProductCard from '../components/ProductCard'
-import { getCollections, getProducts } from '../lib/api'
-import type { Category, Collection, CollectionSlug, Product } from '../data/types'
+import { getProducts, getGemstoneTypes, assetUrl } from '../lib/api'
+import { useCollections } from '../lib/useCollections'
+import { CATEGORIES, type Category, type Product } from '../data/types'
 
-const CATEGORIES: Category[] = ['Rings', 'Earrings', 'Pendants', 'Bracelets', 'Chains', 'Necklaces']
-const PAGE_SIZE = 9
-const MAX_PRICE = 45000
+type Sort = 'featured' | 'price-asc' | 'price-desc' | 'newest'
 
-type Sort = 'featured' | 'price-asc' | 'price-desc' | 'name'
+interface Preset {
+  category?: Category
+  mens?: boolean
+  premium?: boolean
+  collection?: string
+}
 
-export default function Shop() {
-  const [searchParams] = useSearchParams()
-  const initialCollection = searchParams.get('collection') as CollectionSlug | null
+interface ListingProps {
+  preset?: Preset
+  eyebrow?: string
+  title: string
+  description?: ReactNode
+  tone?: 'blush' | 'noir' | 'silver'
+  image?: string | null
+  categories?: Category[]
+}
 
-  const [categoryFilter, setCategoryFilter] = useState<Set<Category>>(new Set())
-  const [collectionFilter, setCollectionFilter] = useState<Set<CollectionSlug>>(
-    new Set(initialCollection ? [initialCollection] : []),
-  )
-  const [minPrice, setMinPrice] = useState(0)
-  const [maxPrice, setMaxPrice] = useState(MAX_PRICE)
-  const [availability, setAvailability] = useState<Set<'available' | 'enquire'>>(new Set())
-  const [sort, setSort] = useState<Sort>('featured')
-  const [page, setPage] = useState(1)
+// One listing page powers Shop all, each jewellery type, Men's, Premium,
+// the cultural collections and search. Filters: type, collection, gemstone.
+export function Listing({ preset = {}, eyebrow, title, description, tone, image, categories = CATEGORIES }: ListingProps) {
+  const [params, setParams] = useSearchParams()
+  const collections = useCollections()
+  const q = params.get('q') ?? ''
 
-  const [products, setProducts] = useState<Product[]>([])
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [loading, setLoading] = useState(true)
+  const [all, setAll] = useState<Product[] | null>(null)
+  const [gemstones, setGemstones] = useState<string[]>([])
+  const [drawer, setDrawer] = useState(false)
+
+  const typeFilter = new Set((params.get('type') ?? '').split(',').filter(Boolean))
+  const collectionFilter = new Set((params.get('collection') ?? '').split(',').filter(Boolean))
+  const gemFilter = new Set((params.get('gemstone') ?? '').split(',').filter(Boolean))
+  const sort = (params.get('sort') as Sort) || 'featured'
 
   useEffect(() => {
-    Promise.all([getProducts(), getCollections()])
-      .then(([p, c]) => {
-        setProducts(p)
-        setCollections(c)
-      })
-      .catch(() => {
-        setProducts([])
-        setCollections([])
-      })
-      .finally(() => setLoading(false))
+    setAll(null)
+    getProducts({
+      category: preset.category,
+      mens: preset.mens ? '1' : undefined,
+      premium: preset.premium ? '1' : undefined,
+      collection: preset.collection,
+      q: q || undefined,
+    })
+      .then(setAll)
+      .catch(() => setAll([]))
+  }, [preset.category, preset.mens, preset.premium, preset.collection, q])
+
+  useEffect(() => {
+    getGemstoneTypes().then(setGemstones).catch(() => setGemstones([]))
   }, [])
 
-  const toggle = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+  const setFilter = (key: string, values: Set<string>) => {
+    const next = new URLSearchParams(params)
+    if (values.size) next.set(key, [...values].join(','))
+    else next.delete(key)
+    setParams(next, { replace: true })
+  }
+  const toggle = (key: string, set: Set<string>, value: string) => {
     const next = new Set(set)
-    next.has(value) ? next.delete(value) : next.add(value)
-    setter(next)
-    setPage(1)
+    if (next.has(value)) next.delete(value)
+    else next.add(value)
+    setFilter(key, next)
+  }
+  const clearAll = () => {
+    const next = new URLSearchParams()
+    if (q) next.set('q', q)
+    setParams(next, { replace: true })
   }
 
   const filtered = useMemo(() => {
-    let list = products.filter((p) => {
-      if (categoryFilter.size && !categoryFilter.has(p.category)) return false
-      if (collectionFilter.size && !collectionFilter.has(p.collection)) return false
-      if (p.price < minPrice || p.price > maxPrice) return false
-      if (availability.size && !availability.has(p.availability)) return false
+    let list = (all ?? []).filter((p) => {
+      if (typeFilter.size && !typeFilter.has(p.category)) return false
+      if (collectionFilter.size && !p.collections.some((c) => collectionFilter.has(c))) return false
+      if (gemFilter.size) {
+        const g = p.gemstone?.type ?? 'none'
+        if (!(gemFilter.has(g) || (gemFilter.has('any') && p.gemstone))) return false
+      }
       return true
     })
-
     if (sort === 'price-asc') list = [...list].sort((a, b) => a.price - b.price)
     if (sort === 'price-desc') list = [...list].sort((a, b) => b.price - a.price)
-    if (sort === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name))
-
     return list
-  }, [products, categoryFilter, collectionFilter, minPrice, maxPrice, availability, sort])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, params])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const activeCount = typeFilter.size + collectionFilter.size + gemFilter.size
+  const showTypeFilter = !preset.category && categories.length > 1
+  const showCollectionFilter = !preset.collection
 
-  const clearAll = () => {
-    setCategoryFilter(new Set())
-    setCollectionFilter(new Set())
-    setMinPrice(0)
-    setMaxPrice(MAX_PRICE)
-    setAvailability(new Set())
-    setPage(1)
-  }
+  const Check = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
+    <label className="flex items-center gap-3 text-sm cursor-pointer py-1">
+      <input type="checkbox" checked={checked} onChange={onChange} className="accent-noir w-4 h-4" />
+      {label}
+    </label>
+  )
+
+  const filters = (
+    <div className="space-y-8">
+      {showTypeFilter && (
+        <fieldset>
+          <legend className="eyebrow text-stone mb-3">Jewellery type</legend>
+          {categories.map((c) => <Check key={c} label={c} checked={typeFilter.has(c)} onChange={() => toggle('type', typeFilter, c)} />)}
+        </fieldset>
+      )}
+      {showCollectionFilter && collections.length > 0 && (
+        <fieldset>
+          <legend className="eyebrow text-stone mb-3">Collection</legend>
+          {collections.map((c) => (
+            <Check key={c.slug} label={c.name} checked={collectionFilter.has(c.slug)} onChange={() => toggle('collection', collectionFilter, c.slug)} />
+          ))}
+        </fieldset>
+      )}
+      <fieldset>
+        <legend className="eyebrow text-stone mb-3">Gemstone</legend>
+        <Check label="Any gemstone" checked={gemFilter.has('any')} onChange={() => toggle('gemstone', gemFilter, 'any')} />
+        {gemstones.map((g) => <Check key={g} label={g} checked={gemFilter.has(g)} onChange={() => toggle('gemstone', gemFilter, g)} />)}
+        {!preset.premium && <Check label="No gemstone" checked={gemFilter.has('none')} onChange={() => toggle('gemstone', gemFilter, 'none')} />}
+      </fieldset>
+      {activeCount > 0 && (
+        <button onClick={clearAll} className="text-xs uppercase tracking-[0.14em] text-rose-dark underline underline-offset-4">
+          Clear filters ({activeCount})
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div>
       <PageBanner
-        eyebrow="The collections / All jewellery"
-        title="Objects of expression."
-        description={
-          <>
-            <p className="mb-3">
-              Explore five design worlds through rings, earrings, pendants and more. Collection names describe
-              aesthetic inspiration, not where a piece is manufactured.
-            </p>
-            <p className="text-xs">All products and prices below are illustrative concept content.</p>
-          </>
-        }
-        image={<ProductImage category="Pendants" collection="middle-eastern" className="w-full h-full" iconClassName="w-16 h-16" />}
+        eyebrow={eyebrow}
+        title={q ? `Results for “${q}”` : title}
+        description={q ? undefined : description}
+        tone={tone}
+        image={image ? assetUrl(image) : undefined}
       />
 
       <div className="mx-auto max-w-[1400px] px-6 sm:px-10 py-10">
-        <div className="flex items-center justify-between mb-8 text-sm">
-          <span className="text-stone">The complete edit · {products.length} sample pieces</span>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as Sort)}
-            className="border border-line bg-cream px-3 py-2 text-sm focus:outline-none focus:border-maroon"
-          >
-            <option value="featured">Sort by: Featured</option>
-            <option value="price-asc">Price: Low to high</option>
-            <option value="price-desc">Price: High to low</option>
-            <option value="name">Name: A to Z</option>
-          </select>
+        <div className="flex items-center justify-between gap-4 mb-8 text-sm">
+          <button onClick={() => setDrawer(true)} className="lg:hidden inline-flex items-center gap-2 border border-line px-4 py-2.5">
+            <SlidersHorizontal size={15} strokeWidth={1.4} /> Filter{activeCount ? ` (${activeCount})` : ''}
+          </button>
+          <span className="hidden lg:block text-stone">{all ? `${filtered.length} ${filtered.length === 1 ? 'piece' : 'pieces'}` : ''}</span>
+          <label className="flex items-center gap-2">
+            <span className="sr-only">Sort</span>
+            <select
+              value={sort}
+              onChange={(e) => {
+                const next = new URLSearchParams(params)
+                next.set('sort', e.target.value)
+                setParams(next, { replace: true })
+              }}
+              className="border border-line bg-cream px-3 py-2.5 text-sm focus:outline-none focus:border-noir"
+            >
+              <option value="featured">Featured</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+            </select>
+          </label>
         </div>
 
-        <div className="grid lg:grid-cols-[240px_1fr] gap-10">
-          <aside className="space-y-8">
-            <h2 className="font-display text-2xl text-maroon">Refine the edit</h2>
-
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">Category</div>
-              <div className="space-y-2.5">
-                {CATEGORIES.map((c) => (
-                  <label key={c} className="flex items-center gap-2.5 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={categoryFilter.has(c)}
-                      onChange={() => toggle(categoryFilter, c, setCategoryFilter)}
-                      className="accent-maroon"
-                    />
-                    {c}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">Inspiration collection</div>
-              <div className="space-y-2.5">
-                {collections.map((c) => (
-                  <label key={c.slug} className="flex items-center gap-2.5 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={collectionFilter.has(c.slug)}
-                      onChange={() => toggle(collectionFilter, c.slug, setCollectionFilter)}
-                      className="accent-maroon"
-                    />
-                    {c.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">Price · PKR</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={minPrice}
-                  min={0}
-                  onChange={(e) => { setMinPrice(Number(e.target.value)); setPage(1) }}
-                  className="w-full border border-line bg-cream px-2 py-1.5 text-sm focus:outline-none focus:border-maroon"
-                />
-                <span className="text-stone">—</span>
-                <input
-                  type="number"
-                  value={maxPrice}
-                  min={0}
-                  onChange={(e) => { setMaxPrice(Number(e.target.value)); setPage(1) }}
-                  className="w-full border border-line bg-cream px-2 py-1.5 text-sm focus:outline-none focus:border-maroon"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.1em] text-stone mb-3">Availability</div>
-              <div className="space-y-2.5">
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={availability.has('available')}
-                    onChange={() => toggle(availability, 'available', setAvailability)}
-                    className="accent-maroon"
-                  />
-                  Available to order
-                </label>
-                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={availability.has('enquire')}
-                    onChange={() => toggle(availability, 'enquire', setAvailability)}
-                    className="accent-maroon"
-                  />
-                  Made to enquire
-                </label>
-              </div>
-            </div>
-
-            <button onClick={clearAll} className="text-xs text-maroon underline underline-offset-2">
-              Clear all filters
-            </button>
-          </aside>
+        <div className="grid lg:grid-cols-[220px_1fr] gap-10">
+          <aside className="hidden lg:block">{filters}</aside>
 
           <div>
-            {loading ? (
-              <div className="py-24 text-center text-stone">Loading the collection…</div>
-            ) : pageItems.length === 0 ? (
+            {all === null ? (
+              <div className="py-24 text-center text-stone">Loading…</div>
+            ) : filtered.length === 0 ? (
               <div className="py-24 text-center text-stone">
-                No pieces match these filters yet.{' '}
-                <button onClick={clearAll} className="text-maroon underline">
-                  Clear filters
-                </button>
+                <p className="mb-4">No pieces match {q ? 'your search' : 'these filters'} yet.</p>
+                {activeCount > 0 ? (
+                  <button onClick={clearAll} className="text-rose-dark underline underline-offset-4">Clear filters</button>
+                ) : (
+                  <Link to="/custom-jewellery" className="text-rose-dark underline underline-offset-4">Ask us to create it for you</Link>
+                )}
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-10">
-                {pageItems.map((p) => (
-                  <ProductCard key={p.id} product={p} />
-                ))}
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-x-4 sm:gap-x-6 gap-y-12">
+                {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
               </div>
             )}
-
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-12 pt-6 border-t border-line">
-              <span className="text-sm text-stone">
-                Showing {pageItems.length ? (page - 1) * PAGE_SIZE + 1 : 0}–{(page - 1) * PAGE_SIZE + pageItems.length} of{' '}
-                {filtered.length} illustrative pieces
-              </span>
-              <div className="flex items-center gap-2">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setPage(n)}
-                    className={`w-9 h-9 text-sm flex items-center justify-center ${
-                      n === page ? 'bg-maroon text-cream' : 'bg-cream-dark text-ink hover:bg-sand/40'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-4 h-9 text-sm bg-cream-dark text-ink hover:bg-sand/40 disabled:opacity-40"
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
+
+      {drawer && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
+          <div className="absolute inset-0 bg-noir/50" onClick={() => setDrawer(false)} />
+          <div className="absolute right-0 top-0 h-full w-[85vw] max-w-sm bg-cream p-6 overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between mb-8">
+              <span className="font-display text-2xl">Filter</span>
+              <button onClick={() => setDrawer(false)} aria-label="Close filters"><X size={22} strokeWidth={1.4} /></button>
+            </div>
+            {filters}
+            <button onClick={() => setDrawer(false)} className="mt-auto bg-noir text-cream py-4 text-[11px] uppercase tracking-[0.16em]">
+              Show {filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+export default function Shop() {
+  return <Listing eyebrow="SULTANÉ" title="All Jewellery" description="Every design is made to order in silver once your payment is verified." />
+}
+
+const CATEGORY_SLUGS: Record<string, Category> = { necklaces: 'Necklaces', earrings: 'Earrings', bracelets: 'Bracelets', rings: 'Rings', chains: 'Chains', pendants: 'Pendants' }
+
+export function CategoryPage({ category }: { category: Category }) {
+  const copy: Partial<Record<Category, string>> = {
+    Necklaces: 'Pendants, collars and statement necklaces in silver.',
+    Earrings: 'Studs, hoops and drops — from everyday to occasion.',
+    Bracelets: 'Cuffs, links and chains for the wrist.',
+    Rings: 'Sculpted bands, signets and gemstone rings.',
+  }
+  return <Listing preset={{ category }} eyebrow="Shop" title={category} description={copy[category]} />
+}
+
+export function MensPage() {
+  const { category } = useParams()
+  const cat = category ? CATEGORY_SLUGS[category] : undefined
+  return (
+    <Listing
+      key={cat ?? 'all'}
+      preset={{ mens: true, category: cat }}
+      eyebrow="The Men's Collection"
+      title={cat ? `Men's ${cat}` : "Men's Jewellery"}
+      description="Chains, rings and bracelets with weight and presence."
+      tone="noir"
+      categories={['Chains', 'Rings', 'Bracelets']}
+    />
+  )
+}
+
+export function PremiumPage() {
+  return (
+    <Listing
+      preset={{ premium: true }}
+      eyebrow="Genuine gemstones"
+      title="The Premium Collection"
+      description="Silver pieces set with genuine gemstones. Each listing states the stone and whether it is natural or laboratory-created. Optional gemstone testing is available on eligible pieces."
+      tone="silver"
+    />
   )
 }

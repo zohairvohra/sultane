@@ -5,7 +5,8 @@
   "description": "SULTANÉ PostgreSQL schema, migrations, and seed data",
   "scripts": {
     "migrate": "tsx migrate.ts",
-    "seed": "tsx seed.ts"
+    "seed": "tsx seed.ts",
+    "reset": "tsx reset.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

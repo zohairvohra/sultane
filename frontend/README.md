@@ -1,42 +1,26 @@
-# SULTANÉ — storefront + admin
+# SULTANÉ storefront + owner dashboard
 
-React + TypeScript + Tailwind frontend for SULTANÉ, built from the brand's wireframe mockup. Talks to the Express/PostgreSQL API in `../backend`.
-
-## Setup
+React 19 + TypeScript + Tailwind 4 + Vite. Talks only to the API in `../backend`.
 
 ```bash
 npm install
-cp .env.example .env     # VITE_API_URL, defaults to http://localhost:4000/api
-npm run dev               # http://localhost:5173 (or next free port)
+cp .env.example .env     # VITE_API_URL (default http://localhost:4000/api; use /api when served by the API)
+npm run dev
+npm run build            # type-check + production build to dist/
 ```
 
-Requires the API running — see `../database/README.md` and `../backend/README.md` to get PostgreSQL migrated and seeded first; nothing in this app will load data without it.
+## Storefront routes
 
-## What's here
+`/` home · `/necklaces` `/earrings` `/bracelets` `/rings` · `/mens[/chains|/rings|/bracelets]` · `/collections[/:slug]` · `/premium` · `/shop?q=` (search) · `/product/:slug` · `/customize/:slug` · `/custom-jewellery` · `/cart` · `/checkout` · `/order/:ref` · `/track-order` · `/account` · `/verify[/:code]` (QR target) · `/about` `/contact` `/faq` `/care` `/policies/:slug`
 
-- **Storefront**: homepage, shop with filters, product detail, cart, checkout (COD / bank transfer), order confirmation, "customise this design" and "begin with an idea" enquiry forms with image upload, article verification lookup, order tracking.
-- **Admin** (`/admin/login`): JWT-authenticated owner dashboard for orders (status workflow, payment verification, article-code generation) and custom enquiries (status pipeline, WhatsApp/email actions, private reference images).
-- All catalogue, cart, checkout, enquiry, verification, and admin data is fetched live from the API — nothing is hardcoded mock data. See `src/lib/api.ts` for the full client.
+## Owner dashboard (`/admin`)
 
-## Verifying the integration
+Overview (reports) · Orders & payments (receipt viewer, verify/flag, status workflow, courier, WhatsApp templates, loyalty) · Custom requests (reference images, quotes, convert to order) · Products (add/edit/publish/pause, photos, collections, gemstones, testing) · Article registry (corrections, printable QR authenticity cards) · Promotions & rewards · Site settings (WhatsApp, bank details, delivery & testing fees, hero video, collections, story, FAQs, policies, password).
 
-Two Playwright scripts exist for driving the real app (not just type-checking it):
+The dashboard is code-split, so shoppers never download it. Admin sessions are kept in `sessionStorage` and end when the tab closes.
 
-```bash
-npm install  # installs playwright as a devDependency
-node verify-app.mjs          # UI-only smoke test (doesn't require the API)
-node verify-integration.mjs  # full live run — both servers must be up, drives
-                              # browse → checkout → payment-proof → admin login →
-                              # verify payment → article lookup → enquiry pipeline
-```
+## Notes
 
-`verify-integration.mjs` is the one that actually proves the frontend and backend
-agree with each other — it was run repeatedly during development and caught two
-real integration bugs (a checkout-navigation race and a missing payment-proof
-upload step) before they shipped.
-
-## Known gaps
-
-- **No payment-proof upload screen.** The API supports it; nothing in the UI calls it yet, so bank-transfer orders currently need proof submitted another way (see `../backend/README.md`).
-- **Cart is in-memory only** — it resets on a hard page refresh (not on client-side navigation). Fine for a single checkout session; add `localStorage` persistence if customers need to resume a cart across visits.
-- **Admin catalogue / article registry / settings screens are placeholders** (`AdminPlaceholder`) — the API endpoints exist, the UI doesn't yet.
+- All totals shown in the bag and checkout come from the server's `/orders/quote`; the bag itself persists in `localStorage`.
+- Until the owner uploads photographs, products show an on-brand placeholder — never stock imagery.
+- WhatsApp links use the number from settings everywhere (floating button, contact, enquiries, receipts).

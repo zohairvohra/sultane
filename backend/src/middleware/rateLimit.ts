@@ -1,10 +1,19 @@
 import type { NextFunction, Request, Response } from 'express'
 
-// Minimal in-memory sliding-window limiter — fine for a single-instance
-// deployment. For multi-instance production, replace with a Redis-backed
-// limiter (e.g. rate-limiter-flexible) behind the reverse proxy.
-export function rateLimit({ windowMs, max }: { windowMs: number; max: number }) {
+// In-memory sliding-window limiter — adequate for a single-instance
+// deployment. For multiple instances, back this with Redis.
+export function rateLimit({ windowMs, max, message }: { windowMs: number; max: number; message?: string }) {
   const hits = new Map<string, number[]>()
+
+  // Periodically drop stale keys so the map cannot grow unbounded.
+  setInterval(() => {
+    const now = Date.now()
+    for (const [key, times] of hits) {
+      const recent = times.filter((t) => now - t < windowMs)
+      if (recent.length) hits.set(key, recent)
+      else hits.delete(key)
+    }
+  }, windowMs).unref()
 
   return (req: Request, res: Response, next: NextFunction) => {
     const key = req.ip ?? 'unknown'
@@ -14,7 +23,8 @@ export function rateLimit({ windowMs, max }: { windowMs: number; max: number }) 
     hits.set(key, recent)
 
     if (recent.length > max) {
-      return res.status(429).json({ error: 'Too many attempts. Please wait a moment and try again.' })
+      res.setHeader('Retry-After', Math.ceil(windowMs / 1000))
+      return res.status(429).json({ error: message ?? 'Too many attempts. Please wait a moment and try again.' })
     }
     next()
   }
