@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import morgan from 'morgan'
+import fs from 'node:fs'
 import path from 'node:path'
 
 import { authRouter } from './routes/auth'
@@ -18,7 +19,7 @@ import { notFound, errorHandler } from './middleware/errorHandler'
 
 const app = express()
 
-app.use(helmet())
+app.use(helmet({ contentSecurityPolicy: false }))
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') ?? '*' }))
 app.use(morgan('dev'))
 app.use(express.json())
@@ -29,14 +30,6 @@ app.use(express.json())
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'SULTANÉ API',
-    status: 'online',
-    storefront: 'http://localhost:5173',
-    admin: 'http://localhost:5173/admin/login',
-  })
-})
 
 app.use('/api/auth', authRouter)
 app.use('/api/collections', collectionsRouter)
@@ -47,6 +40,32 @@ app.use('/api/articles', articlesRouter)
 app.use('/api/promos', promosRouter)
 app.use('/api/settings', settingsRouter)
 app.use('/api/reports', reportsRouter)
+
+// In production / Docker deployment, serve the frontend build if present
+const clientDistCandidates = [
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(__dirname, '../frontend/dist'),
+]
+const clientDist = clientDistCandidates.find((dir) => fs.existsSync(dir))
+
+if (clientDist) {
+  app.use(express.static(clientDist))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path === '/health') {
+      return next()
+    }
+    res.sendFile(path.join(clientDist, 'index.html'))
+  })
+} else {
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'SULTANÉ API',
+      status: 'online',
+      storefront: 'http://localhost:5173',
+      admin: 'http://localhost:5173/admin/login',
+    })
+  })
+}
 
 app.use(notFound)
 app.use(errorHandler)

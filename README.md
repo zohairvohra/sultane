@@ -1,3 +1,13 @@
+---
+title: Sultane Luxury Jewellery
+emoji: 💍
+colorFrom: yellow
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # SULTANÉ
 
 Luxury silver jewellery e-commerce site: React storefront + admin dashboard, Express API, PostgreSQL database. Three independent packages — each has its own `package.json`, runs on its own, and is documented in its own README.
